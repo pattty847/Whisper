@@ -1,11 +1,23 @@
 # app.py
 from flask import Flask, request, redirect, url_for, render_template, send_file
+from flask_httpauth import HTTPBasicAuth
 import moviepy.editor as mp
 import whisper
 import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+auth = HTTPBasicAuth()
+
+# Configure user credentials
+users = {"": ""}
+
+@auth.get_password
+def get_pw(username):
+    if username in users:
+        return users.get(username)
+    return None
+
 app.config['UPLOAD_FOLDER'] = 'uploads'  # Folder to store uploaded videos
 app.config['TRANSCRIPTS_FOLDER'] = 'transcripts'  # Folder to store transcripts
 
@@ -29,7 +41,9 @@ def extract_audio_and_transcribe(video_path, output_audio_path, output_transcrip
     with open(output_transcript_path, "w") as f:
         f.write(result["text"])
 
+# Apply authentication to the main upload route
 @app.route('/', methods=['GET', 'POST'])
+@auth.login_required
 def upload_file():
     if request.method == 'POST':
         # Check if a file is included in the POST request
@@ -58,6 +72,7 @@ def upload_file():
     return render_template('upload.html')
 
 @app.route('/downloads/<filename>')
+@auth.login_required
 def download_transcript(filename):
     return send_file(os.path.join(app.config['TRANSCRIPTS_FOLDER'], filename), as_attachment=True)
 

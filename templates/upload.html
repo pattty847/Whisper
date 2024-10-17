@@ -1,0 +1,27 @@
+<!-- templates/upload.html -->
+<!doctype html>
+<html>
+<head>
+    <title>Video to Text Transcription</title>
+    <style>
+        #loading {
+            display: none;
+            font-size: 20px;
+            color: #007BFF;
+        }
+    </style>
+    <script>
+        function showLoading() {
+            document.getElementById("loading").style.display = "block";
+        }
+    </script>
+</head>
+<body>
+    <h1>Upload Video for Transcription</h1>
+    <form method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <input type="file" name="file" accept="video/*" required>
+        <input type="submit" value="Upload">
+    </form>
+    <p id="loading">Processing, please wait...</p>
+</body>
+</html>
