@@ -57,6 +57,9 @@ This project is a Flask-based web application that allows users to upload video 
 
 2. **Download Transcript**:
    - After processing, you will be redirected to a page where you can download the transcript.
+  
+## To-Do
+   - Incorporate a way to reach the server over the internet, using ngrok.
 
 ## File Structure
 
