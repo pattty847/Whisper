@@ -3,11 +3,49 @@
 <html>
 <head>
     <title>Video to Text Transcription</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- Ensures responsive design -->
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f4f4f9;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 400px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        input[type="file"],
+        input[type="text"],
+        input[type="submit"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
         #loading {
             display: none;
-            font-size: 20px;
+            font-size: 18px;
             color: #007BFF;
+            margin-top: 20px;
         }
     </style>
     <script>
@@ -19,9 +57,11 @@
 <body>
     <h1>Upload Video for Transcription</h1>
     <form method="post" enctype="multipart/form-data" onsubmit="showLoading()">
-        <input type="file" name="file" accept="video/*" required>
-        <input type="submit" value="Upload">
-    </form>
+        <input type="file" name="file" accept="video/*">
+        <p>OR</p>
+        <input type="text" name="url" placeholder="Enter video URL (YouTube, Instagram, TikTok)">
+        <input type="submit" value="Submit">
+    </form>    
     <p id="loading">Processing, please wait...</p>
 </body>
 </html>

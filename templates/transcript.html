@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+    <title>Transcript</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .download {
+            background-color: #007BFF;
+            color: white;
+        }
+        .copy {
+            background-color: #28a745;
+            color: white;
+        }
+    </style>
+    <script>
+        function copyToClipboard() {
+            const text = document.getElementById('transcript-text').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Transcript copied to clipboard!');
+            }, () => {
+                alert('Failed to copy transcript.');
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Transcript</h1>
+        <pre id="transcript-text">{{ transcript_text }}</pre>
+        <a href="{{ url_for('download_transcript', filename=filename) }}" download>
+            <button class="download">Download Transcript</button>
+        </a>
+        <button class="copy" onclick="copyToClipboard()">Copy to Clipboard</button>
+    </div>
+</body>
+</html>
