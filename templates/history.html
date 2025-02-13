@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Transcript History{% endblock %}
+
+{% block content %}
+<h1>Transcript History</h1>
+{% if history_data %}
+    {% for item in history_data %}
+    <div class="history-item">
+        <div>
+            <strong>{{ item.timestamp }}</strong><br>
+            Video URL: <a href="{{ item.video_url }}" target="_blank">{{ item.video_url }}</a>
+        </div>
+        <div>
+            <a href="{{ url_for('view_transcript', filename=item.transcript_filename) }}" class="btn btn-view">📜 View Transcript</a>
+            <a href="{{ url_for('download_transcript', filename=item.transcript_filename) }}" class="btn btn-download">⬇️ Download</a>
+            <a href="{{ item.video_url }}" target="_blank" class="btn btn-video">▶️ Watch Video</a>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <p>No history available.</p>
+{% endif %}
+<br>
+<button onclick="window.location.href='/'" class="btn btn-danger">⬅️ Back to Home</button>
+{% endblock %}

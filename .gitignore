@@ -1,3 +1,5 @@
 venv
 transcripts
 uploads
+history.json
+to_txt.py
