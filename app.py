@@ -1,45 +1,43 @@
 # app.py
-from datetime import datetime
+import os
 import json
 import time
-from flask import Flask, request, redirect, url_for, render_template, send_file, session
-from flask_httpauth import HTTPBasicAuth
+import uuid
 import hashlib
-import moviepy.editor as mp
-import whisper
-import os
-from werkzeug.utils import secure_filename
-import yt_dlp
 import threading
+import logging
+from datetime import datetime
+from flask import Flask, request, redirect, url_for, render_template, send_file
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.utils import secure_filename
 
-progress = {"step": 0}  # Track processing steps
-progress_lock = threading.Lock()
+import moviepy.editor as mp
+import torch
+import whisper
+import yt_dlp
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 HISTORY_FILE = "history.json"
 
 def load_history():
-    """Load previous transcripts from file, ensuring it doesn't break on empty JSON."""
     if not os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "w") as f:  # Create an empty JSON list if file doesn't exist
+        with open(HISTORY_FILE, "w") as f:
             f.write("[]")
-
     try:
         with open(HISTORY_FILE, "r") as f:
-            data = f.read().strip()  # Read and remove any accidental spaces or newlines
-            
-            if not data:  # If the file is empty, return an empty list
+            data = f.read().strip()
+            if not data:
                 return []
-            
-            return json.loads(data)  # Convert JSON to Python list safely
+            return json.loads(data)
     except json.JSONDecodeError:
-        print("⚠️ WARNING: history.json is corrupted. Resetting history.")
+        logging.warning("history.json is corrupted. Resetting history.")
         with open(HISTORY_FILE, "w") as f:
-            f.write("[]")  # Reset to an empty JSON list
+            f.write("[]")
         return []
 
-
 def save_to_history(video_url, video_filename, transcript_filename):
-    """Save new transcript to history."""
     history = load_history()
     history_entry = {
         "video_url": video_url,
@@ -48,59 +46,52 @@ def save_to_history(video_url, video_filename, transcript_filename):
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     history.append(history_entry)
-    
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=4)
 
-
 app = Flask(__name__)
 auth = HTTPBasicAuth()
-
-# Configure user credentials
 users = {"user": "pass"}
 
 @auth.get_password
 def get_pw(username):
-    if username in users:
-        return users.get(username)
-    return None
+    return users.get(username)
 
-app.config['UPLOAD_FOLDER'] = 'uploads'  # Folder to store uploaded videos
-app.config['TRANSCRIPTS_FOLDER'] = 'transcripts'  # Folder to store transcripts
-
-# Ensure the upload and transcript folders exist
+# Folders
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['TRANSCRIPTS_FOLDER'] = 'transcripts'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TRANSCRIPTS_FOLDER'], exist_ok=True)
 
-# Load Whisper model globally to avoid loading it every time
-model = whisper.load_model("base")
+# Load Whisper model (optionally add your model selection logic)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = whisper.load_model("base", device=device)
+logging.info("✅ Loaded Whisper model: base")
+
+# --- JOB MANAGEMENT (replacing global progress) ---
+# Each job (keyed by a unique job_id) will have its own progress and results.
+jobs = {}       # { job_id: { "progress": 0, "error": None, "transcript": None, ... } }
+jobs_lock = threading.Lock()
 
 def get_unique_filename(url):
-    """Generate a unique filename based on the URL."""
-    return hashlib.md5(url.encode()).hexdigest()  # Creates a unique hash for each video URL
-
+    return hashlib.md5(url.encode()).hexdigest()
 
 def download_video(url, output_path_base):
     unique_filename = get_unique_filename(url)
     output_path_base = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-
     ydl_opts = {
         'outtmpl': output_path_base + '.%(ext)s',
         'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'quiet': False,
+        'quiet': True,
         'noplaylist': True
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             result = ydl.extract_info(url, download=True)
             video_path = ydl.prepare_filename(result)
-            
-            # Use a default placeholder if thumbnail is missing
-            thumbnail_url = result.get("thumbnail", "/static/default-thumbnail.jpg")  
-
+            thumbnail_url = result.get("thumbnail", "/static/default-thumbnail.png")
             return {
                 "path": video_path if os.path.exists(video_path) else None,
                 "title": result.get("title", "Unknown"),
@@ -108,133 +99,180 @@ def download_video(url, output_path_base):
                 "uploader": result.get("uploader", "Unknown")
             }
     except Exception as e:
-        print(f"Error downloading video: {e}")
+        logging.error(f"Error downloading video: {e}")
         return None
 
-def extract_audio_and_transcribe(video_path, output_audio_path, output_transcript_path):
-    video = mp.VideoFileClip(video_path)
-    duration = video.duration  # Get video length in seconds
-    audio = video.audio
-    audio.write_audiofile(output_audio_path)
+def extract_audio_and_transcribe(video_path, output_audio_path, output_transcript_path, job_id):
+    # Step 1: Extract audio
+    try:
+        video = mp.VideoFileClip(video_path)
+        video.audio.write_audiofile(output_audio_path, logger=None)
+    except Exception as e:
+        logging.error(f"Audio extraction failed: {e}")
+        with jobs_lock:
+            jobs[job_id]["error"] = "Audio extraction failed."
+        return
 
-    with progress_lock:
-        progress["step"] = 70  # Midway update
+    with jobs_lock:
+        jobs[job_id]["progress"] = 60
 
-    start_time = time.time()
-    result = model.transcribe(output_audio_path)
+    # Step 2: Transcribe audio
+    try:
+        transcription_result = model.transcribe(output_audio_path)
+        transcript_text = transcription_result["text"]
+    except Exception as e:
+        logging.error(f"Transcription failed: {e}")
+        with jobs_lock:
+            jobs[job_id]["error"] = "Transcription failed."
+        return
 
-    with progress_lock:
-        progress["step"] = 85  # Near completion update
+    # Save transcript to file
+    try:
+        with open(output_transcript_path, "w") as f:
+            f.write(transcript_text)
+    except Exception as e:
+        logging.error(f"Saving transcript failed: {e}")
+        with jobs_lock:
+            jobs[job_id]["error"] = "Saving transcript failed."
+        return
 
-    # Save transcript
-    with open(output_transcript_path, "w") as f:
-        f.write(result["text"])
+    with jobs_lock:
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["transcript_filename"] = os.path.basename(output_transcript_path)
+        jobs[job_id]["video_title"] = os.path.basename(video_path).rsplit(".", 1)[0]
+    # Optionally remove temporary audio file:
+    try:
+        os.remove(output_audio_path)
+    except Exception:
+        pass
 
-    elapsed_time = time.time() - start_time
-    estimated_total = (elapsed_time / (70 - 40)) * 100  # Extrapolate ETA
-    final_progress = min(100, 85 + (100 - 85) * (elapsed_time / estimated_total))
+def process_video(job_id, form_data):
+    with jobs_lock:
+        jobs[job_id]["progress"] = 10
 
-    with progress_lock:
-        progress["step"] = final_progress
+    video_title = "Unknown"
+    video_thumbnail = "/static/default-thumbnail.png"
+    video_uploader = "Unknown"
 
+    # Use the pre-saved file if available
+    if "file_path" in form_data:
+        video_path = form_data["file_path"]
+        video_title = os.path.splitext(os.path.basename(video_path))[0]
+    elif "url" in form_data and form_data["url"]:
+        video_url = form_data["url"]
+        with jobs_lock:
+            jobs[job_id]["progress"] = 20
+        video_info = download_video(video_url, os.path.join(app.config['UPLOAD_FOLDER'], "downloaded_video"))
+        if video_info is None or video_info["path"] is None:
+            with jobs_lock:
+                jobs[job_id]["error"] = "Failed to download video."
+            return
+        video_path = video_info["path"]
+        video_title = video_info.get("title", "Unknown")
+        video_thumbnail = video_info.get("thumbnail", video_thumbnail)
+        video_uploader = video_info.get("uploader", "Unknown")
+    else:
+        with jobs_lock:
+            jobs[job_id]["error"] = "No file or URL provided."
+        return
+
+    if not os.path.exists(video_path):
+        with jobs_lock:
+            jobs[job_id]["error"] = "Video file could not be found."
+        return
+
+    with jobs_lock:
+        jobs[job_id]["progress"] = 40
+
+    # Define paths for audio and transcript
+    base_name = os.path.splitext(os.path.basename(video_path))[0]
+    audio_filename = f"{base_name}.wav"
+    transcript_filename = f"{base_name}_transcript.txt"
+    output_audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
+    output_transcript_path = os.path.join(app.config['TRANSCRIPTS_FOLDER'], transcript_filename)
+
+    with jobs_lock:
+        jobs[job_id]["progress"] = 50
+
+    extract_audio_and_transcribe(video_path, output_audio_path, output_transcript_path, job_id)
+
+    with jobs_lock:
+        if not jobs[job_id].get("error"):
+            save_to_history(video_title, os.path.basename(video_path), transcript_filename)
+            jobs[job_id]["video_thumbnail"] = video_thumbnail
+            jobs[job_id]["video_uploader"] = video_uploader
+            jobs[job_id]["video_url"] = form_data.get("url", "Uploaded File")
 
 
 @app.route('/', methods=['GET', 'POST'])
 @auth.login_required
 def upload_file():
-    global progress
     if request.method == 'POST':
-        with progress_lock:
-            progress["step"] = 10  # Start progress
+        # Create a new job and start a background thread
+        job_id = str(uuid.uuid4())
+        with jobs_lock:
+            jobs[job_id] = {"progress": 0, "error": None}
 
-        video_info = None
+        form_data = {}
         if 'file' in request.files and request.files['file'].filename:
             file = request.files['file']
             filename = secure_filename(file.filename)
             video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            # Save the file in the main thread
             file.save(video_path)
+            form_data["file_path"] = video_path
         elif 'url' in request.form and request.form['url']:
-            video_url = request.form['url']
-            filename = secure_filename("downloaded_video")
-            output_path_base = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            form_data["url"] = request.form['url']
 
-            with progress_lock:
-                progress["step"] = 20  # Download started
+        # Start the processing thread
+        thread = threading.Thread(target=process_video, args=(job_id, form_data))
+        thread.start()
 
-            video_info = download_video(video_url, output_path_base)
-
-            if video_info is None or video_info["path"] is None:
-                return 'Failed to download video', 400
-
-            video_path = video_info["path"]  # Extract the correct video path
-
-        if not os.path.exists(video_path):
-            return 'Video file could not be found', 400
-
-        with progress_lock:
-            progress["step"] = 40  # Video downloaded
-
-        # Define paths for audio and transcript
-        audio_filename = f"{os.path.splitext(os.path.basename(video_path))[0]}.wav"
-        output_audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
-        transcript_filename = f"{os.path.splitext(os.path.basename(video_path))[0]}_transcript.txt"
-        output_transcript_path = os.path.join(app.config['TRANSCRIPTS_FOLDER'], transcript_filename)
-
-        with progress_lock:
-            progress["step"] = 60  # Audio extraction started
-
-        extract_audio_and_transcribe(video_path, output_audio_path, output_transcript_path)
-
-        with progress_lock:
-            progress["step"] = 100  # Done
-
-        save_to_history(video_info.get("title", "Unknown"), os.path.basename(video_path), transcript_filename)
-
-        return redirect(url_for('view_transcript', filename=transcript_filename, title=video_info.get("title", "Unknown"), thumbnail=video_info.get("thumbnail", ""), uploader=video_info.get("uploader", "Unknown")))
-
+        # Redirect to a processing page that polls the job progress.
+        return redirect(url_for('job_status', job_id=job_id))
     return render_template('upload.html')
 
 
-@app.route('/history')
+@app.route('/job/<job_id>')
 @auth.login_required
-def history():
-    history_data = load_history()
-    return render_template('history.html', history_data=history_data)
+def job_status(job_id):
+    # This page shows a progress bar and will redirect when job is done.
+    return render_template('processing.html', job_id=job_id)
 
-
-@app.route('/progress')
-def get_progress():
-    with progress_lock:
-        return {"progress": progress["step"]}
-
+@app.route('/progress/<job_id>')
+def get_progress(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return {"progress": 0, "error": "Job not found"}
+        return {
+            "progress": job["progress"],
+            "error": job["error"],
+            "transcript_filename": job.get("transcript_filename"),
+            "video_title": job.get("video_title"),
+            "video_thumbnail": job.get("video_thumbnail"),
+            "video_uploader": job.get("video_uploader")
+        }
 
 @app.route('/transcript/<filename>')
 @auth.login_required
 def view_transcript(filename):
     transcript_path = os.path.join(app.config['TRANSCRIPTS_FOLDER'], filename)
-
     if not os.path.exists(transcript_path):
         return 'Transcript not found', 404
-
     with open(transcript_path, 'r') as file:
         transcript_text = file.read()
-
-    # Retrieve metadata from query parameters
     title = request.args.get("title", "Unknown Title")
     thumbnail = request.args.get("thumbnail", "")
     uploader = request.args.get("uploader", "Unknown Uploader")
-
     return render_template('transcript.html', transcript_text=transcript_text, filename=filename, title=title, thumbnail=thumbnail, uploader=uploader)
-
 
 @app.route('/downloads/<filename>')
 @auth.login_required
 def download_transcript(filename):
     transcript_path = os.path.join(app.config['TRANSCRIPTS_FOLDER'], filename)
-    
     if not os.path.exists(transcript_path):
         return 'Transcript not found', 404
-
     return send_file(
         transcript_path,
         as_attachment=True,
@@ -242,6 +280,11 @@ def download_transcript(filename):
         mimetype='text/plain'
     )
 
+@app.route('/history')
+@auth.login_required
+def history():
+    history_data = load_history()
+    return render_template('history.html', history_data=history_data)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

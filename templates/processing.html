@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Processing Your Video{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>Processing Your Video</h2>
+    <div id="progress-container" style="display: block; width: 100%; background-color: #ddd; border-radius: 8px; margin: 20px 0;">
+        <div id="progress-bar" style="width: 0%; height: 25px; background-color: #4CAF50; text-align: center; line-height: 25px; color: white; border-radius: 8px; transition: width 0.5s ease-in-out;">
+            <span id="progress-text">0%</span>
+        </div>
+    </div>
+    <div id="status-text" style="margin-top: 10px; color: #666;">Starting process...</div>
+    <div id="error-text" style="margin-top: 10px; color: #dc3545; display: none;"></div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<script>
+    let progressInterval;
+
+    function updateProgress() {
+        console.log("Updating progress...");
+        const jobId = "{{ job_id }}";
+        fetch(`/progress/${jobId}`)
+            .then(response => response.json())
+            .then(data => {
+                console.log("Progress data:", data);
+                
+                const progressBar = document.getElementById("progress-bar");
+                const progressText = document.getElementById("progress-text");
+                const statusText = document.getElementById("status-text");
+                const errorText = document.getElementById("error-text");
+
+                // Update progress bar and text
+                progressBar.style.width = data.progress + "%";
+                progressText.innerText = data.progress + "%";
+
+                // Update status message
+                if (data.progress < 20) {
+                    statusText.innerText = "Starting process...";
+                } else if (data.progress < 40) {
+                    statusText.innerText = "Downloading video...";
+                } else if (data.progress < 60) {
+                    statusText.innerText = "Extracting audio...";
+                } else if (data.progress < 100) {
+                    statusText.innerText = "Transcribing...";
+                }
+
+                // Handle errors
+                if (data.error) {
+                    errorText.innerText = "Error: " + data.error;
+                    errorText.style.display = "block";
+                    clearInterval(progressInterval);
+                    return;
+                }
+
+                // Handle completion
+                if (data.progress === 100 && data.transcript_filename) {
+                    clearInterval(progressInterval);
+                    // Redirect to transcript page with metadata
+                    const params = new URLSearchParams({
+                        title: data.video_title || "Unknown Title",
+                        thumbnail: data.video_thumbnail || "",
+                        uploader: data.video_uploader || "Unknown Uploader"
+                    });
+                    window.location.href = `/transcript/${data.transcript_filename}?${params.toString()}`;
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching progress:", error);
+                document.getElementById("error-text").innerText = "Error: Failed to fetch progress";
+                document.getElementById("error-text").style.display = "block";
+            });
+    }
+
+    // Start progress updates when page loads
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("Page loaded, starting progress updates...");
+        updateProgress(); // Initial update
+        progressInterval = setInterval(updateProgress, 2000); // Poll every 2 seconds
+    });
+</script>
+{% endblock %}

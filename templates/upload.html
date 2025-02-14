@@ -2,46 +2,119 @@
 
 {% block title %}Video to Text Transcription{% endblock %}
 
-{% block content %}
-<div style="text-align: center; margin-bottom: 20px;">
-    <a href="/history" class="btn btn-primary">📜 View History</a>
-</div>
+{% block extra_head %}
+<style>
+    .upload-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 500px;
+        margin: auto;
+    }
 
-<form method="post" enctype="multipart/form-data" onsubmit="showProgress()">
-    <input type="file" name="file" accept="video/*">
-    <p>OR</p>
-    <input type="text" name="url" placeholder="Enter video URL (YouTube, Instagram, TikTok)">
-    <input type="submit" value="Submit">
-</form>
+    .upload-box {
+        background: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        text-align: center;
+        margin-top: 20px;
+    }
 
-<p id="loading">Processing, please wait... ⏳</p>
-<div id="progress-container">
-    <div id="progress-bar">0%</div>
-</div>
+    .custom-file-upload {
+        display: inline-block;
+        background-color: #007bff;
+        color: white;
+        padding: 12px 15px;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    .custom-file-upload:hover {
+        background-color: #0056b3;
+    }
+
+    .custom-file-upload input {
+        display: none;
+    }
+
+    #file-name {
+        display: block;
+        margin-top: 10px;
+        font-size: 14px;
+        color: #555;
+    }
+
+    .divider {
+        margin: 20px 0;
+        font-weight: bold;
+        color: #666;
+        position: relative;
+        text-align: center;
+    }
+
+    .divider::before,
+    .divider::after {
+        content: "";
+        display: inline-block;
+        width: 40%;
+        height: 1px;
+        background: #ddd;
+        position: relative;
+        top: -5px;
+    }
+
+    .divider::before {
+        margin-right: 10px;
+    }
+
+    .divider::after {
+        margin-left: 10px;
+    }
+
+    @media (max-width: 480px) {
+        .upload-box {
+            padding: 15px;
+        }
+
+        .custom-file-upload {
+            width: 100%;
+        }
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById("file-upload").addEventListener("change", function () {
+            let fileName = this.files.length > 0 ? this.files[0].name : "No file chosen";
+            document.getElementById("file-name").innerText = fileName;
+        });
+    });
+</script>
 {% endblock %}
 
-{% block extra_head %}
-<script>
-    function showProgress() {
-        document.getElementById("loading").style.display = "block";
-        document.getElementById("progress-container").style.display = "block";
-        updateProgress();
-    }
+{% block content %}
+<div class="upload-container">
+    <a href="/history" class="btn btn-primary btn-lg">📜 View History</a>
 
-    function updateProgress() {
-        fetch('/progress')
-            .then(response => response.json())
-            .then(data => {
-                let progressBar = document.getElementById("progress-bar");
-                progressBar.style.width = data.progress + "%";
-                progressBar.innerText = data.progress + "%";
+    <div class="upload-box">
+        <form method="post" enctype="multipart/form-data">
+            <label for="file-upload" class="custom-file-upload">
+                Choose File
+                <input type="file" name="file" id="file-upload" accept="video/*">
+            </label>
+            <span id="file-name">No file chosen</span>
 
-                if (data.progress < 100) {
-                    setTimeout(updateProgress, 1000);
-                } else {
-                    document.getElementById("loading").innerText = "✅ Done!";
-                }
-            });
-    }
-</script>
+            <div class="divider">OR</div>
+
+            <input type="text" name="url" class="form-control" placeholder="Enter video URL (YouTube, Instagram, TikTok)">
+
+            <button type="submit" class="btn btn-success btn-lg">Submit</button>
+        </form>
+    </div>
+</div>
 {% endblock %}

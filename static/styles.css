@@ -1,13 +1,15 @@
+/* Base Styles */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     background-color: #f4f4f9;
     margin: 0;
     padding: 20px;
-    text-align: center;
+    line-height: 1.6;
+    color: #333;
 }
 
 .container {
-    max-width: 700px;
+    max-width: 90%;
     margin: auto;
     background-color: #fff;
     padding: 20px;
@@ -15,25 +17,28 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-h1 {
-    color: #333;
-}
-
+/* Common Button Styles */
 button, .btn {
-    padding: 10px 15px;
-    border-radius: 5px;
+    padding: 10px 20px;
+    border-radius: 6px;
     border: none;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+button:hover, .btn:hover {
+    transform: translateY(-1px);
 }
 
 .btn-primary {
     background-color: #007bff;
     color: white;
-    text-decoration: none;
-    padding: 10px 20px;
-    display: inline-block;
-    margin-top: 10px;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
 }
 
 .btn-danger {
@@ -41,63 +46,57 @@ button, .btn {
     color: white;
 }
 
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
 .btn-success {
     background-color: #28a745;
     color: white;
 }
 
-.history-item {
-    padding: 10px;
-    border-bottom: 1px solid #ddd;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.btn-success:hover {
+    background-color: #218838;
 }
 
-.history-item:last-child {
-    border-bottom: none;
-}
-
-pre {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    background-color: #f9f9f9;
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-}
-
-.download {
-    background-color: #007BFF;
-    color: white;
-}
-
-.copy {
-    background-color: #28a745;
-    color: white;
-}
-
-#loading {
-    display: none;
-    font-size: 18px;
-    color: #007BFF;
-    margin-top: 20px;
-}
-
-#progress-container {
-    display: none;
+/* Common Form Styles */
+input[type="text"],
+input[type="file"] {
     width: 100%;
-    background-color: #ddd;
-    border-radius: 8px;
-    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.2s;
 }
 
-#progress-bar {
-    width: 0%;
-    height: 20px;
-    background-color: #4CAF50;
-    text-align: center;
-    line-height: 20px;
-    color: white;
-    border-radius: 8px;
+input[type="text"]:focus,
+input[type="file"]:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+/* Common Responsive Breakpoints */
+@media (min-width: 768px) {
+    .container {
+        max-width: 700px;
+    }
+}
+
+@media (min-width: 992px) {
+    .container {
+        max-width: 900px;
+    }
+}
+
+/* Back to Home Button Responsive */
+@media (max-width: 480px) {
+    .btn-danger {
+        width: auto;
+        font-size: 14px;
+        padding: 8px 12px;
+        position: absolute;
+        top: 10px;
+        left: 10px;
+    }
 }
